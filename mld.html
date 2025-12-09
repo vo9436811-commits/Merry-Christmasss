@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Morandi Christmas Tree (V4)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
+    
+    <style>
+        body { margin: 0; background-color: #0d0d0d; overflow: hidden; color: white; font-family: sans-serif; }
+        
+        /* Loading */
+        #loader {
+            position: fixed; inset: 0; z-index: 999;
+            background: #1a1a1a; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            transition: opacity 1s ease;
+        }
+        .spinner {
+            width: 50px; height: 50px;
+            border: 3px solid rgba(230, 200, 200, 0.3);
+            border-radius: 50%;
+            border-top-color: #E6C9C9;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* 莫兰迪风格 UI */
+        .morandi-btn {
+            font-family: 'Great Vibes', cursive;
+            font-size: 2.2rem;
+            color: #E6C9C9;
+            text-shadow: 0 0 10px rgba(230, 200, 200, 0.3);
+        }
+        .glass { 
+            background: rgba(255,255,255,0.03); 
+            backdrop-filter: blur(16px); 
+            border: 1px solid rgba(255,255,255,0.1); 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        
+        #error-box {
+            display: none; position: fixed; top: 20px; left: 20px; right: 20px;
+            padding: 20px; background: rgba(100, 50, 50, 0.9); border: 1px solid #dbaeb3;
+            color: #fff; z-index: 1000; border-radius: 8px; font-family: monospace;
+        }
+    </style>
+
+    <script>
+        window.process = { env: { NODE_ENV: 'production' } };
+        window.onerror = function(msg) {
+            document.getElementById('error-box').style.display = 'block';
+            document.getElementById('error-box').innerText = "Error: " + msg;
+        };
+    </script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "three": "https://esm.sh/three@0.160.0",
+            "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.15.16?external=react,react-dom,three",
+            "@react-three/drei": "https://esm.sh/@react-three/drei@9.99.0?external=react,react-dom,three,@react-three/fiber",
+            "@react-three/postprocessing": "https://esm.sh/@react-three/postprocessing@2.16.0?external=react,react-dom,three,@react-three/fiber",
+            "uuid": "https://esm.sh/uuid@9.0.1"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="error-box"></div>
+    <div id="loader">
+        <div class="spinner"></div>
+        <div style="color: #E6C9C9; letter-spacing: 2px; font-size: 12px;">LOADING SOFT DREAMS...</div>
+    </div>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useRef, useMemo, useState, useEffect } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import * as THREE from 'three';
+        import { Canvas, useFrame } from '@react-three/fiber';
+        import { OrbitControls, Environment, PerspectiveCamera, Sparkles } from '@react-three/drei';
+        import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+
+        const RemoveLoader = () => {
+            useEffect(() => {
+                const loader = document.getElementById('loader');
+                if(loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 1000); }
+            }, []);
+            return null;
+        }
+
+        // --- 莫兰迪色盘 ---
+        // 主调粉色系，次调蓝色系，点缀奶咖
+        const PALETTE = [
+            '#E6C9C9', // Dirty Pink
+            '#D8A8A8', // Muted Rose
+            '#F2E6D8', // Cream / Latte
+            '#9FB1BC', // Dusty Blue
+            '#7E92A7', // Steel Blue
+            '#C5AFA0', // Warm Taupe
+        ];
+
+        const TREE_HEIGHT = 16;
+        const TREE_RADIUS = 6.5;
+        const PARTICLE_COUNT = 18000;
+        const ORNAMENT_COUNT = 200; // 总装饰数
+
+        // --- 1. 顶部五角星 (紧贴树尖) ---
+        const TopStar = ({ isUnleashed }) => {
+            const starRef = useRef();
+            useFrame((state) => {
+                if (!starRef.current) return;
+                // 缓慢自转
+                starRef.current.rotation.y += 0.005;
+                // 混沌时向上漂浮
+                const targetY = TREE_HEIGHT / 2 + (isUnleashed ? 4 : 0);
+                starRef.current.position.y = THREE.MathUtils.lerp(starRef.current.position.y, targetY, 0.03);
+            });
+            return (
+                // 刚好放在 TreeHeight/2 的位置
+                <group position={[0, TREE_HEIGHT / 2, 0]}>
+                    <mesh ref={starRef} rotation={[0, 0, Math.PI / 5]}>
+                        {/* 使用四面体组合或者简化的八面体来模拟星星 */}
+                        <octahedronGeometry args={[1.0, 0]} /> 
+                        <meshStandardMaterial 
+                            color="#E0C9A6" // 莫兰迪金 (Antique Gold)
+                            emissive="#E0C9A6"
+                            emissiveIntensity={1.5}
+                            roughness={0.4}
+                            metalness={0.8}
+                        />
+                    </mesh>
+                    <pointLight color="#FFE4B5" intensity={1.5} distance={15} decay={2} />
+                </group>
+            );
+        };
+
+        // --- 2. 柔和粉色针叶系统 ---
+        const foliageVS = `
+          uniform float uTime, uProgress;
+          attribute vec3 aTargetPos, aChaosPos;
+          attribute float aSize;
+          varying vec3 vColor;
+          
+          float cubicBezier(float t, float p0, float p1, float p2, float p3) {
+            float u=1.0-t, tt=t*t, uu=u*u, uuu=uu*u, ttt=tt*t;
+            return uuu*p0+3.0*uu*t*p1+3.0*u*tt*p2+ttt*p3;
+          }
+          
+          void main() {
+            // 混合位置
+            vec3 pos = mix(aTargetPos, aChaosPos, cubicBezier(uProgress, 0.0, 0.2, 0.8, 1.0));
+            
+            // 柔和呼吸动画
+            pos += vec3(sin(uTime + pos.y * 0.5), cos(uTime * 0.8 + pos.x), 0.0) * 0.06;
+            
+            vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+            gl_Position = projectionMatrix * mv;
+            gl_PointSize = aSize * (450.0 / -mv.z); // 粒子大小
+            
+            // --- 莫兰迪粉色调色逻辑 ---
+            // 底部偏深粉，顶部偏浅奶色
+            vec3 darkPink = vec3(0.85, 0.65, 0.65); // #D9A6A6
+            vec3 lightPink = vec3(0.95, 0.85, 0.85); // #F2D9D9
+            
+            // 混合因子
+            float h = (pos.y / 16.0) + 0.5;
+            vec3 baseColor = mix(darkPink, lightPink, h);
+            
+            // 混沌状态变成微蓝/灰调
+            vec3 chaosColor = vec3(0.7, 0.75, 0.8); // 莫兰迪灰蓝
+            
+            vColor = mix(baseColor, chaosColor, uProgress * 0.6);
+          }
+        `;
+        
+        const foliageFS = `
+          varying vec3 vColor;
+          void main() {
+            vec2 uv = gl_PointCoord - 0.5;
+            float d = length(uv);
+            if(d > 0.5) discard;
+            // 极其柔和的羽化边缘
+            float g = pow(1.0 - (d * 2.0), 2.5);
+            gl_FragColor = vec4(vColor + g * 0.3, 0.8); // 略微透明
+          }
+        `;
+
+        const FoliageSystem = ({ isUnleashed }) => {
+            const shaderRef = useRef();
+            
+            // 生成粒子数据
+            const { positions, targetPos, chaosPos, sizes } = useMemo(() => {
+                const count = PARTICLE_COUNT;
+                const tp = new Float32Array(count * 3);
+                const cp = new Float32Array(count * 3);
+                const s = new Float32Array(count);
+                
+                for(let i=0; i<count; i++) {
+                    // 树形态：上密下疏
+                    const hBias = 1.0 - Math.pow(Math.random(), 2.3); 
+                    const y = (hBias * TREE_HEIGHT) - TREE_HEIGHT / 2;
+                    const r = (1.0 - (y + TREE_HEIGHT/2) / TREE_HEIGHT) * TREE_RADIUS * Math.sqrt(Math.random());
+                    const a = y * 6.0 + Math.random() * Math.PI * 2;
+                    
+                    tp[i*3] = Math.cos(a)*r; 
+                    tp[i*3+1] = y; 
+                    tp[i*3+2] = Math.sin(a)*r;
+                    
+                    // 混沌形态：更宽广的散落
+                    const phi = Math.acos(2*Math.random()-1);
+                    const th = Math.random() * Math.PI * 2;
+                    const cr = 15 + Math.random() * 20; // 扩散半径大
+                    cp[i*3] = cr * Math.sin(phi) * Math.cos(th);
+                    cp[i*3+1] = cr * Math.sin(phi) * Math.sin(th);
+                    cp[i*3+2] = cr * Math.cos(phi);
+                    
+                    s[i] = Math.random() * 0.15 + 0.05;
+                }
+                return { targetPos: tp, chaosPos: cp, sizes: s };
+            }, []);
+
+            useFrame((state) => {
+                if (shaderRef.current) {
+                    shaderRef.current.uniforms.uTime.value = state.clock.elapsedTime;
+                    // --- 关键逻辑：延迟释放 ---
+                    // 树体粒子的 Lerp 速度 (0.02) 比装饰物慢，产生"后发"效果
+                    const target = isUnleashed ? 1.0 : 0.0;
+                    shaderRef.current.uniforms.uProgress.value = THREE.MathUtils.lerp(
+                        shaderRef.current.uniforms.uProgress.value,
+                        target,
+                        0.02 // 慢速过渡
+                    );
+                }
+            });
+
+            return (
+                <points>
+                    <bufferGeometry>
+                        <bufferAttribute attach="attributes-position" count={PARTICLE_COUNT} array={targetPos} itemSize={3} />
+                        <bufferAttribute attach="attributes-aTargetPos" count={PARTICLE_COUNT} array={targetPos} itemSize={3} />
+                        <bufferAttribute attach="attributes-aChaosPos" count={PARTICLE_COUNT} array={chaosPos} itemSize={3} />
+                        <bufferAttribute attach="attributes-aSize" count={PARTICLE_COUNT} array={sizes} itemSize={1} />
+                    </bufferGeometry>
+                    <shaderMaterial 
+                        ref={shaderRef} 
+                        vertexShader={foliageVS} 
+                        fragmentShader={foliageFS} 
+                        uniforms={{ uTime: { value: 0 }, uProgress: { value: 0 } }} 
+                        transparent 
+                        depthWrite={false} 
+                        blending={THREE.AdditiveBlending} 
+                    />
+                </points>
+            );
+        };
+
+        // --- 3. 装饰物系统 (球体 + 宝石 + 盒子) ---
+        const OrnamentSystem = ({ isUnleashed }) => {
+            const sphereMesh = useRef();
+            const gemMesh = useRef();
+            const boxMesh = useRef();
+            const dummy = useMemo(() => new THREE.Object3D(), []);
+
+            // 生成通用数据
+            const generateData = (count, scaleMod) => new Array(count).fill(0).map(() => {
+                const y = (Math.random() * TREE_HEIGHT * 0.9) - TREE_HEIGHT / 2 * 0.9;
+                const r = (1.0 - (y + TREE_HEIGHT/2) / TREE_HEIGHT) * TREE_RADIUS * 0.9;
+                const a = Math.random() * Math.PI * 2;
+                
+                // 随机莫兰迪色
+                const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+                
+                return {
+                    t: new THREE.Vector3(Math.cos(a)*r, y, Math.sin(a)*r), // 目标位置
+                    c: new THREE.Vector3((Math.random()-0.5)*40, (Math.random()-0.5)*40, (Math.random()-0.5)*40), // 混沌位置
+                    col: color,
+                    s: (0.2 + Math.random() * 0.3) * scaleMod,
+                    speed: Math.random()
+                };
+            });
+
+            const spheres = useMemo(() => generateData(80, 1.2), []); // 80个球
+            const gems = useMemo(() => generateData(60, 1.0), []);    // 60个宝石
+            const boxes = useMemo(() => generateData(60, 1.1), []);   // 60个盒子
+
+            // 通用更新逻辑
+            const updateMesh = (meshRef, data, time, mixFactor) => {
+                if (!meshRef.current) return;
+                data.forEach((d, i) => {
+                    // 装饰物有更明显的漂浮感
+                    const hover = isUnleashed ? Math.sin(time * d.speed + i) * 3.0 : 0;
+                    
+                    dummy.position.lerpVectors(d.t, d.c, mixFactor);
+                    dummy.position.y += hover;
+                    
+                    // 旋转
+                    dummy.rotation.set(time * d.speed, time + i, 0);
+                    dummy.scale.setScalar(d.s);
+                    dummy.updateMatrix();
+                    meshRef.current.setMatrixAt(i, dummy.matrix);
+                    
+                    // 初始化颜色 (只需一次，但为了简单放在这里)
+                    if (time < 0.5) meshRef.current.setColorAt(i, new THREE.Color(d.col));
+                });
+                meshRef.current.instanceMatrix.needsUpdate = true;
+            };
+
+            useFrame((state) => {
+                const t = state.clock.elapsedTime;
+                // --- 关键逻辑：装饰物先释放 ---
+                // 使用较快的 lerp 速度 (0.08)
+                const target = isUnleashed ? 1.0 : 0.0;
+                // 这里我们手动模拟一个平滑的 currentProgress (简化版，直接用缓动)
+                // 在真实项目中可以用 spring，这里用 lerp 即可
+                // 为了演示不同步，我们直接在 updateMesh 里计算 mix
+            });
+            
+            // 由于 hooks 限制，我们在 render 内部无法存储上一帧状态
+            // 简单起见，我们创建一个 useRef 来存储当前的 progress
+            const progressRef = useRef(0);
+            
+            useFrame((state) => {
+                const t = state.clock.elapsedTime;
+                const target = isUnleashed ? 1.0 : 0.0;
+                // 装饰物释放速度快 (0.08)
+                progressRef.current = THREE.MathUtils.lerp(progressRef.current, target, 0.08);
+                
+                updateMesh(sphereMesh, spheres, t, progressRef.current);
+                updateMesh(gemMesh, gems, t, progressRef.current);
+                updateMesh(boxMesh, boxes, t, progressRef.current);
+            });
+
+            return (
+                <group>
+                    {/* 圆形装饰物 (新) */}
+                    <instancedMesh ref={sphereMesh} args={[undefined, undefined, spheres.length]}>
+                        <sphereGeometry args={[1, 16, 16]} />
+                        <meshStandardMaterial roughness={0.3} metalness={0.6} />
+                    </instancedMesh>
+                    
+                    {/* 宝石 (Icosahedron) */}
+                    <instancedMesh ref={gemMesh} args={[undefined, undefined, gems.length]}>
+                        <icosahedronGeometry args={[1, 0]} />
+                        <meshStandardMaterial roughness={0.1} metalness={0.9} emissive="#fff" emissiveIntensity={0.2} />
+                    </instancedMesh>
+                    
+                    {/* 盒子 (Box) */}
+                    <instancedMesh ref={boxMesh} args={[undefined, undefined, boxes.length]}>
+                        <boxGeometry args={[1, 1, 1]} />
+                        <meshStandardMaterial roughness={0.7} metalness={0.1} />
+                    </instancedMesh>
+                </group>
+            );
+        };
+
+        // --- 主场景 ---
+        const Scene = ({ isUnleashed }) => {
+            return (
+                <>
+                    <PerspectiveCamera makeDefault position={[0, 2, 26]} fov={50} />
+                    {/* OrbitControls: 始终允许旋转，即使在混沌状态 */}
+                    <OrbitControls 
+                        enablePan={false} 
+                        autoRotate={!isUnleashed} 
+                        autoRotateSpeed={0.8} 
+                        minDistance={10} 
+                        maxDistance={50}
+                        enableDamping={true}
+                        dampingFactor={0.05}
+                    />
+                    
+                    {/* 灯光系统：柔和暖光 */}
+                    <ambientLight intensity={0.4} color="#FFE4E1" /> {/* 浅玫瑰色环境光 */}
+                    <pointLight position={[10, 10, 10]} intensity={1.0} color="#E6C9C9" />
+                    <pointLight position={[-10, 5, -10]} intensity={0.8} color="#9FB1BC" />
+                    <pointLight position={[0, 0, 5]} intensity={0.5} color="#fff" />
+
+                    <Environment preset="city" blur={1} />
+                    
+                    <group>
+                        <TopStar isUnleashed={isUnleashed} />
+                        <FoliageSystem isUnleashed={isUnleashed} />
+                        <OrnamentSystem isUnleashed={isUnleashed} />
+                        
+                        {/* 氛围粒子 */}
+                        <Sparkles 
+                            count={800} 
+                            scale={[30, 30, 30]} 
+                            size={4} 
+                            speed={0.4} 
+                            opacity={0.4} 
+                            color="#E6C9C9" 
+                        />
+                    </group>
+
+                    <EffectComposer disableNormalPass>
+                        {/* 辉光更柔和、范围更大 */}
+                        <Bloom luminanceThreshold={0.85} mipmapBlur intensity={1.5} radius={0.8} />
+                        <Vignette eskil={false} offset={0.1} darkness={0.4} />
+                    </EffectComposer>
+                    <RemoveLoader />
+                </>
+            );
+        };
+
+        const App = () => {
+            const [isUnleashed, setUnleashed] = useState(false);
+            
+            return (
+                <div className="w-full h-screen relative bg-[#151515]">
+                    {/* Canvas 背景设为极深的暖灰色 */}
+                    <Canvas dpr={[1, 1.5]} gl={{ antialias: false, toneMapping: THREE.ACESFilmicToneMapping }}>
+                        <color attach="background" args={['#1a1515']} />
+                        <Scene isUnleashed={isUnleashed} />
+                    </Canvas>
+                    
+                    <div className="absolute inset-0 pointer-events-none flex flex-col justify-end pb-16 items-center z-10 font-sans">
+                        <button 
+                            className={`
+                                pointer-events-auto 
+                                relative overflow-hidden group 
+                                px-14 py-4 rounded-full 
+                                border border-amber-100/20 
+                                backdrop-blur-md 
+                                transition-all duration-1000 ease-out
+                                ${isUnleashed ? 'bg-rose-900/30 scale-95 border-rose-200/30' : 'bg-white/5 hover:bg-rose-900/20 hover:scale-105'} 
+                                glass
+                            `}
+                            onPointerDown={() => setUnleashed(true)} 
+                            onPointerUp={() => setUnleashed(false)} 
+                            onPointerLeave={() => setUnleashed(false)} 
+                            onTouchStart={() => setUnleashed(true)} 
+                            onTouchEnd={(e) => { e.preventDefault(); setUnleashed(false); }}
+                        >
+                            <span className={`morandi-btn block transition-colors duration-500 ${isUnleashed ? 'text-rose-200' : 'text-[#E6C9C9]'}`}>
+                                Merry Christmas
+                            </span>
+                            <span className="block text-[10px] text-amber-100/40 tracking-[0.4em] uppercase mt-1 text-center font-sans">
+                                {isUnleashed ? 'Release' : 'Hold & Dream'}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
